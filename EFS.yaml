@@ -1,0 +1,38 @@
+---
+AWSTemplateFormatVersion : "2010-09-09"
+# Parameters:
+Resources:
+  MountTargetVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 172.31.0.0/16
+  MountTargetSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 172.31.32.0/20
+      VpcId: !Ref MountTargetVPC
+     AvailabilityZone: "eu-west-1a"
+  MountTargetSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 172.31.0.0/20
+      VpcId: !Ref MountTargetVPC
+      AvailabilityZone: "eu-west-1b"
+  MountTargetSubnetThree:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 172.31.16.0/20
+      VpcId: !Ref MountTargetVPC
+      AvailabilityZone: "eu-west-1c"
+  jcILU2EFS:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      BackupPolicy:
+        Status: DISABLED
+      Encrypted: true
+      FileSystemTags:
+        - Key: Name
+          Value: jcILU2EFS
+      # Tags:
+      # - Key: Name
+      #   Value: jcILU2EFS
