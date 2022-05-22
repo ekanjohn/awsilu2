@@ -1,29 +1,36 @@
 ---
 AWSTemplateFormatVersion : "2010-09-09"
-# Parameters:
+Parameters:
+  Subnet1:
+    Type: String
+    Description: local subnet
+    Default: subnet-a293d3f8
+  Subnet2:
+    Type: String
+    Description: local subnet
+    Default: subnet-1efee856
+  Subnet3:
+    Type: String
+    Description: local subnet
+    Default: subnet-07404661
+  VPCID:
+    Description: VPC ID
+    Type: String
+    Default: vpc-10c51069
 Resources:
-  MountTargetVPC:
-    Type: AWS::EC2::VPC
+  jcILU2EFSmountSG:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      CidrBlock: 172.31.0.0/16
-  MountTargetSubnetOne:
-    Type: AWS::EC2::Subnet
-    Properties:
-      CidrBlock: 172.31.32.0/20
-      VpcId: !Ref MountTargetVPC
-     AvailabilityZone: "eu-west-1a"
-  MountTargetSubnetTwo:
-    Type: AWS::EC2::Subnet
-    Properties:
-      CidrBlock: 172.31.0.0/20
-      VpcId: !Ref MountTargetVPC
-      AvailabilityZone: "eu-west-1b"
-  MountTargetSubnetThree:
-    Type: AWS::EC2::Subnet
-    Properties:
-      CidrBlock: 172.31.16.0/20
-      VpcId: !Ref MountTargetVPC
-      AvailabilityZone: "eu-west-1c"
+      GroupDescription: Allow ssh to client host
+      GroupName: jcILU2EFSmountSG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: EFSmountSG
   jcILU2EFS:
     Type: AWS::EFS::FileSystem
     Properties:
@@ -33,6 +40,24 @@ Resources:
       FileSystemTags:
         - Key: Name
           Value: jcILU2EFS
-      # Tags:
-      # - Key: Name
-      #   Value: jcILU2EFS
+  jcILU2EFSMT1:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref jcILU2EFS
+      SecurityGroups: 
+        - !GetAtt jcILU2EFSmountSG.GroupId
+      SubnetId: !Ref Subnet1
+  jcILU2EFSMT2:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref jcILU2EFS
+      SecurityGroups: 
+        - !GetAtt jcILU2EFSmountSG.GroupId
+      SubnetId: !Ref Subnet2
+  jcILU2EFSMT3:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref jcILU2EFS
+      SecurityGroups: 
+        - !GetAtt jcILU2EFSmountSG.GroupId
+      SubnetId: !Ref Subnet3
