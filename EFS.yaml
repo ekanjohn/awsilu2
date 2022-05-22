@@ -18,19 +18,27 @@ Parameters:
     Type: String
     Default: vpc-10c51069
 Resources:
+  jcILU2WPInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow instance access to EFS and RDS
+      GroupName: jcILU2WPInstanceSG
+      Tags:
+        - Key: Name
+          Value: jcILU2WPInstanceSG
   jcILU2EFSmountSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow ssh to client host
+      GroupDescription: Allow NFS to EFS
       GroupName: jcILU2EFSmountSG
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
+          SourceSecurityGroupName: !Ref jcILU2WPInstanceSG
+          FromPort: 2049
+          ToPort: 2049
       Tags:
         - Key: Name
-          Value: EFSmountSG
+          Value: jcILU2EFSmountSG
   jcILU2EFS:
     Type: AWS::EFS::FileSystem
     Properties:
