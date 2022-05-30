@@ -1,0 +1,208 @@
+---
+AWSTemplateFormatVersion : "2010-09-09"
+Parameters:
+  Subnet1:
+    Type: String
+    Description: local subnet
+    Default: subnet-a293d3f8
+  Subnet2:
+    Type: String
+    Description: local subnet
+    Default: subnet-1efee856
+  Subnet3:
+    Type: String
+    Description: local subnet
+    Default: subnet-07404661
+  VPCID:
+    Description: VPC ID
+    Type: String
+    Default: vpc-10c51069
+  ImageId:
+    Type: String
+    Description: 'Linux 2 AMI for Ireland eu-west1 Region'
+    Default: 'ami-0c1bc246476a5572b'
+  InstanceType:
+    Type: String
+    Description: Free tier
+    Default: t2.micro
+  Key1:
+    Description: SSH Keypair to login to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: MyDemoKey1
+  jcILU2ec2efsmountpoint:
+    Description: Directory in EC2 Amazon Linux instance for efs to mount
+    Type: String
+    Default: "var/www/html"
+Resources:
+  jcILU2WPInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow instance access to EFS and RDS
+      GroupName: jcILU2WPInstanceSG
+      Tags:
+        - Key: Name
+          Value: jcILU2WPInstanceSG
+  jcILU2EFSmountSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow NFS to EFS
+      GroupName: jcILU2EFSmountSG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          SourceSecurityGroupName: !Ref jcILU2WPInstanceSG
+          FromPort: 2049
+          ToPort: 2049
+      Tags:
+        - Key: Name
+          Value: jcILU2EFSmountSG
+  jcILU2RDSSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow RDS access
+      GroupName: jcILU2RDSSG
+      SecurityGroupIngress:
+        IpProtocol: tcp
+        SourceSecurityGroupName: !Ref jcILU2WPInstanceSG
+        FromPort: 3306
+        ToPort: 3306
+      VpcId: !Ref VPCID
+      Tags:
+        - Key: Name
+          Value: jcILU2RDSSG
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow ssh to client host
+      GroupName: SSHSecurityGroup
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: SSHSecurityGroup
+  HTTPSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      GroupName: HTTPSecurityGroup
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: HTTPSecurityGroup
+  jcILU2EFS:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      BackupPolicy:
+        Status: DISABLED
+      Encrypted: true
+      FileSystemTags:
+        - Key: Name
+          Value: jcILU2EFS
+  jcILU2EFSMT1:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref jcILU2EFS
+      SecurityGroups: 
+        - !GetAtt jcILU2EFSmountSG.GroupId
+      SubnetId: !Ref Subnet1
+  jcILU2EFSMT2:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref jcILU2EFS
+      SecurityGroups: 
+        - !GetAtt jcILU2EFSmountSG.GroupId
+      SubnetId: !Ref Subnet2
+  jcILU2EFSMT3:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref jcILU2EFS
+      SecurityGroups: 
+        - !GetAtt jcILU2EFSmountSG.GroupId
+      SubnetId: !Ref Subnet3
+  jcILU2RDSmySQL:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties: 
+      AllocatedStorage: 20
+      BackupRetentionPeriod: 0
+      DBInstanceClass: db.t3.micro
+      DBInstanceIdentifier: jcILU2dbinstance-1
+      DBName: jcILU2ApacheDBnamn
+      Engine: mysql
+      EngineVersion: 8.0.28
+      MasterUsername: admin
+      MasterUserPassword: adminadmin
+      Port: 3306
+      PubliclyAccessible: no
+      VPCSecurityGroups: 
+        - !GetAtt jcILU2RDSSG.GroupId
+  jcILU2EC2Instance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - jcILU2EFSMT1
+      - jcILU2EFSMT2
+      - jcILU2EFSMT3
+      - jcILU2EFS
+      - jcILU2RDSmySQL
+    Properties:
+      SecurityGroupIds:
+      - !GetAtt SSHSecurityGroup.GroupId
+      - !GetAtt HTTPSecurityGroup.GroupId
+      - !GetAtt jcILU2WPInstanceSG.GroupId
+      KeyName: !Ref Key1
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      Tags:
+      - Key: Name
+        Value: JCILU2EC2Instance
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y amazon-efs-utils
+          mkdir -p ${jcILU2ec2efsmountpoint}
+          echo "${jcILU2EFS}:/ ${jcILU2ec2efsmountpoint} efs _netdev,tls 0 0" | tee -a /etc/fstab
+          mount -a
+          amazon-linux-extras install -y lamp-mariadb10.2-php7.2 php7.2
+          yum install -y httpd
+          systemctl start httpd
+          systemctl enable httpd
+          usermod -a -G apache ec2-user
+          chown -R ec2-user:apache /var/www
+          chmod 2775 /var/www && find /var/www -type d -exec sudo chmod 2775 {} \;
+          find /var/www -type f -exec sudo chmod 0664 {} \;
+          wget -O /tmp/latest.tar.gz https://wordpress.org/latest.tar.gz
+          tar -xzf /tmp/latest.tar.gz -C /tmp
+          rm /tmp/latest.tar.gz
+          cp /tmp/wordpress/wp-config-sample.php /tmp/wordpress/wp-config.php
+          sed -i 's/database_name_here/jcILU2ApacheDBnamn/' /tmp/wordpress/wp-config.php
+          sed -i 's/username_here/admin/' /tmp/wordpress/wp-config.php
+          sed -i 's/password_here/adminadmin/' /tmp/wordpress/wp-config.php
+          sed -i 's/localhost/${jcILU2RDSmySQL.Endpoint.Address}:3306/' /tmp/wordpress/wp-config.php
+          SALT=$(curl -L https://api.wordpress.org/secret-key/1.1/salt/)
+          STRING='put your unique phrase here'
+          printf '%s\n' "g/$STRING/d" a "$SALT" . w | ed -s /tmp/wordpress/wp-config.php
+          cp -r /tmp/wordpress/* /var/www/html/
+          sed -i '/<Directory "\/var\/www\/html">/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/httpd/conf/httpd.conf
+          yum install php-gd
+          yum install php-mbstring php-xml -y
+          systemctl enable httpd
+          systemctl restart httpd
+          systemctl restart php-fpm
+          wget -O /tmp/phpMyAdmin-latest-all-languages.tar.gz https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.tar.gz
+          mkdir /var/www/html/phpMyAdmin && tar -xvzf /tmp/phpMyAdmin-latest-all-languages.tar.gz -C /var/www/html/phpMyAdmin --strip-components 1
+          rm /tmp/phpMyAdmin-latest-all-languages.tar.gz
+          cp /var/www/html/phpMyAdmin/config.sample.inc.php /var/www/html/phpMyAdmin/config.inc.php
+          sed -i 's/localhost/${jcILU2RDSmySQL.Endpoint.Address}:3306/' /var/www/html/phpMyAdmin/config.inc.php
+        # groupadd web
+        # usermod -a -G web ec2-user
+        # chgrp -R web /var/www/html
+        # chmod 2775 /var/www/html
+        # find /var/www/html -type d -exec sudo chmod 2775 {} +
+        # find /var/www/html -type f -exec sudo chmod 0664 {} +

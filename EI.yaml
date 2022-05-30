@@ -1,0 +1,158 @@
+---
+AWSTemplateFormatVersion : "2010-09-09"
+Parameters:
+  Subnet1:
+    Type: String
+    Description: local subnet
+    Default: subnet-a293d3f8
+  Subnet2:
+    Type: String
+    Description: local subnet
+    Default: subnet-1efee856
+  Subnet3:
+    Type: String
+    Description: local subnet
+    Default: subnet-07404661
+  VPCID:
+    Description: VPC ID
+    Type: String
+    Default: vpc-10c51069
+  ImageId:
+    Type: String
+    Description: 'Linux 2 AMI for Ireland eu-west1 Region'
+    Default: 'ami-0c1bc246476a5572b'
+  InstanceType:
+    Type: String
+    Description: Free tier
+    Default: t2.micro
+  Key1:
+    Description: SSH Keypair to login to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: MyDemoKey1
+  jcILU2ec2efsmountpoint:
+    Description: Directory in EC2 Amazon Linux instance for efs to mount
+    Type: String
+    Default: "/var/www/html"
+Resources:
+  jcILU2WPInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow instance access to EFS and RDS
+      GroupName: jcILU2WPInstanceSG
+      Tags:
+        - Key: Name
+          Value: jcILU2WPInstanceSG
+  jcILU2EFSmountSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow NFS to EFS
+      GroupName: jcILU2EFSmountSG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          SourceSecurityGroupName: !Ref jcILU2WPInstanceSG
+          FromPort: 2049
+          ToPort: 2049
+      Tags:
+        - Key: Name
+          Value: jcILU2EFSmountSG
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow ssh to client host
+      GroupName: CFssh
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: CFssh
+  HTTPSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      GroupName: CFhttp
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: CFhttp
+  jcILU2EFS:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      BackupPolicy:
+        Status: DISABLED
+      Encrypted: true
+      FileSystemTags:
+        - Key: Name
+          Value: jcILU2EFS
+  jcILU2EFSMT1:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref jcILU2EFS
+      SecurityGroups: 
+        - !GetAtt jcILU2EFSmountSG.GroupId
+      SubnetId: !Ref Subnet1
+  jcILU2EFSMT2:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref jcILU2EFS
+      SecurityGroups: 
+        - !GetAtt jcILU2EFSmountSG.GroupId
+      SubnetId: !Ref Subnet2
+  jcILU2EFSMT3:
+    Type: AWS::EFS::MountTarget
+    Properties: 
+      FileSystemId: !Ref jcILU2EFS
+      SecurityGroups: 
+        - !GetAtt jcILU2EFSmountSG.GroupId
+      SubnetId: !Ref Subnet3
+  jcILU2EC2Instance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - jcILU2EFSMT1
+      - jcILU2EFSMT2
+      - jcILU2EFSMT3
+      - jcILU2EFS
+    Properties:
+      SecurityGroups: 
+      - !Ref SSHSecurityGroup
+      - !Ref HTTPSecurityGroup
+      - !Ref jcILU2WPInstanceSG
+      KeyName: !Ref Key1
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      Tags:
+      - Key: Name
+        Value: JCILU2EC2Instance
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y amazon-efs-utils
+          mkdir -p ${jcILU2ec2efsmountpoint}
+          mount -t efs -o tls ${jcILU2EFS} ${jcILU2ec2efsmountpoint}
+
+
+        # echo "${jcILU2EFS}:/ ${jcILU2ec2efsmountpoint} efs _netdev,tls 0 0" | tee -a /etc/fstab
+        # mount -a
+        # To pass on a parameter to UserData:
+        #   efsinfo=${efsinfo]
+        # Will it work with Ref? Or can a parameter be set after the EFS is set up?
+        # Perhaps using the 
+        # DependsOn:
+        #   - EFS
+        # ?
+        # I should use tee but don't remember how
+        # file-system-id:/ efs-mount-point efs _netdev,noresvport,tls,iam 0 0
+        # /etc/fstab
+        # mount -a
+        # mount -t efs -o tls {/ jcILU2EFS}
+        # ok a suggestion
+        # tried using {jcILU2ec2efsmountpoint} but doesn't seem to be working, will try to write the value instead. Forgot it needs a $ in front of it.
+        #noresvport what is that, wait, maybe remove sudo from userdata?
+        # added mountpoints in dependson
